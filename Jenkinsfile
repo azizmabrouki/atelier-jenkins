@@ -12,7 +12,7 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'git@github.com:azizmabrouki/atelier-jenkins.git',
-                    credentialsId: 'SHA256:PGY5wo8q5xaUnZcsqEzkuzs59OL3BBU5kEmsmqo2f3c'
+                    credentialsId: 'jenkins-ssh-key'
             }
         }
 
