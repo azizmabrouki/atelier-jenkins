@@ -2,64 +2,63 @@ pipeline {
     agent any
 
     environment {
-        MAVEN_OPTS = '-Dmaven.repo.local=$WORKSPACE/.m2/repository'
-        // Using workspace local Maven repo to cache dependencies
+        DOCKER_IMAGE = "spring-ci:1.0"
+        CONTAINER_NAME = "spring-ci-container"
+        HOST_PORT = "8080"
+        CONTAINER_PORT = "8080"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Hello World') {
+            steps {
+                echo 'Hello World'
+            }
+        }
+
+        stage('Checkout Code') {
             steps {
                 git branch: 'main',
                     url: 'git@github.com:azizmabrouki/atelier-jenkins.git',
-                    credentialsId: 'github-ssh'
+                    credentialsId: 'jenkins-ssh-key'
             }
         }
 
         stage('Build with Maven') {
             steps {
-                // Build once, produce target/*.jar
-                sh 'mvn clean package -Dmaven.repo.local=$WORKSPACE/.m2/repository'
-            }
-            post {
-                success {
-                    // Archive jar so other stages can use it
-                    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-                }
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            environment {
-                scannerHome = tool 'sonar-scanner'
-            }
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    // Reuse compiled classes from Build stage
-                    sh """
-                        $scannerHome/bin/sonar-scanner \
-                        -Dsonar.projectKey=atelier \
-                        -Dsonar.sources=src \
-                        -Dsonar.java.binaries=target/classes
-                    """
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 2, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
+                sh 'mvn clean package'
             }
         }
 
         stage('Docker Build & Run') {
             steps {
-                // Reuse jar built in Build stage
-                sh 'docker build -t atelier-app:1.0 .'
-                sh 'docker run -d -p 8080:8080 atelier-app:1.0'
+                script {
+                    // Build Docker image
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+
+                    // Stop and remove container if it already exists
+                    sh """
+                    if [ \$(docker ps -q -f name=${CONTAINER_NAME}) ]; then
+                        docker stop ${CONTAINER_NAME}
+                        docker rm ${CONTAINER_NAME}
+                    fi
+                    if [ \$(docker ps -aq -f name=${CONTAINER_NAME}) ]; then
+                        docker rm ${CONTAINER_NAME}
+                    fi
+                    """
+
+                    // Run container
+                    sh "docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${DOCKER_IMAGE}"
+                }
             }
         }
     }
-}
 
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs for errors.'
+        }
+    }
+}
